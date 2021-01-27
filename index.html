@@ -1,7 +1,532 @@
-<!DOCTYPE html>
 <html>
-<body>
-<h1>Hello World</h1>
-<p>I'm hosted with GitHub Pages.</p>
+<meta content="text/html" charset="utf-8" />
+<head>
+  <link type="text/css" rel="stylesheet" href="materialize.css"  media="screen,projection"/>
+  <link type="text/css" rel="stylesheet" href="styled_datepicker.css"  media="screen,projection"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <script type="text/javascript" src="dblink.js"></script>
+  <script type="text/javascript" src="DatePickerLocale.js"></script>
+  <script language="JavaScript">
+    var Statement = null;
+    var currDate = new Date();
+    var inputStartDate;
+    var inputEndDate;
+    var startDateMs;
+    var endDateMs;
+    var isAndroid = false;
+    var itemPDLDisplayValue = '2000SS';
+    var itemMCLDisplayValue = '1000MSL';
+    var sql = "with " +
+      "result AS ( " +
+          "SELECT " +
+              "o.OLName AS name, " +
+              "o.OLAddress AS address, " +
+              "st.OLSubTypeName AS subtype, " +
+              "r.olcard_Id, " +
+              "r.Ol_Id, " +
+              "strftime('%d/%m/%Y', OlCardDate) AS visit_date, " +
+              "time(r.beginTime) AS visit_time, " +
+              "res.document_id, " +
+              "res.response_id, " +
+              "res.Section_Id " +
+          "FROM tblOutletCardH r " +
+          "INNER JOIN tblOutlets o ON r.OL_Id = o.OL_Id " +
+          "LEFT JOIN tblOutletSubTypes st ON st.OLSubType_Id = o.OLSubType_Id " +
+          "INNER JOIN ( " +
+              "SELECT qr.Ol_id, qr.Visit_Id, rh.document_id, qr.response_id, ds.Section_Id " +
+              "FROM tblQuestionnaireResponse qr " +
+              "INNER JOIN tblResponsesH rh ON qr.Response_Id = rh.Response_Id " +
+              "INNER JOIN tblResponsesSingleD rs ON rs.Response_Id=rh.Response_Id " +
+              "INNER JOIN tblDocumentItems di ON di.Item_Id=rs.Item_Id " +
+              "INNER JOIN tblDocumentSections ds ON ds.Section_Id = di.Section_Id " +
+              "INNER JOIN tblQuestionnaireOnVisit qv ON qv.Document_Id = rh.Document_Id " +
+              "INNER JOIN tblImgRecognitionSessions irs ON irs.Response_Id = rh.Response_Id AND irs.ProcessState = 7 " +
+              "WHERE qv.destination = 6 AND qr.Draft = 0 AND rh.Status = 2" +
+          ") AS res ON r.OLCard_Id = res.Visit_Id " +
+          "WHERE r.draft = 0 AND DATE(r.OlCardDate) BETWEEN DATE('[inputStartDate]') AND DATE('[inputEndDate]') " +
+      "), lastvisit AS ( " +
+          "SELECT result.*, max(visit_time) max_visit_time " +
+          "FROM result " +
+          "GROUP BY visit_date, ol_id, Document_Id, Section_Id " +
+      ") " +
+
+      "SELECT res1.name, res1.address, res1.subtype, res1.visit_date, ifnull(rsd.Name, msl.Name) section_name, rsd.ResponseValue PDL_RESULT, msl.ResponseValue MSL_RATE  " +
+      "FROM lastvisit res1 " +
+      "LEFT JOIN (" +
+          "SELECT rs.Response_Id, ds.Section_Id, ds.Name, rs.ResponseValue FROM tblResponsesSingleD rs " +
+          "INNER JOIN tblDocumentItems di ON di.Item_Id=rs.Item_Id " +
+          "INNER JOIN tblDocumentSections ds ON ds.Section_Id = di.Section_Id " +
+          "WHERE UPPER(di.ExternalCode)=UPPER('[itemPDLDisplayValue]') " +
+      ") rsd ON rsd.Response_Id=res1.Response_Id AND rsd.Section_Id=res1.Section_Id " +
+      "LEFT JOIN (" +
+          "SELECT rs.Response_Id, ds.Section_Id, ds.Name, rs.ResponseValue FROM tblResponsesSingleD rs " +
+          "INNER JOIN tblDocumentItems di ON di.Item_Id=rs.Item_Id " +
+          "INNER JOIN tblDocumentSections ds ON ds.Section_Id = di.Section_Id " +
+          "WHERE UPPER(di.ExternalCode)=UPPER('[itemMCLDisplayValue]') " +
+      ") msl ON msl.Response_Id=res1.Response_Id AND msl.Section_Id=res1.Section_Id " +
+      "WHERE ifnull(rsd.Name, msl.Name) NOT NULL " +
+      "ORDER BY res1.OLCard_Id, res1.document_id, section_name ";
+
+    function format_number(pnumber, decimals) {
+      if (isNaN(pnumber)) { return 0};
+      if (pnumber=='') { return 0};
+
+      var snum = new String(pnumber);
+      var sec = snum.split('.');
+      var whole = parseFloat(sec[0]);
+      var result = '';
+
+      if(sec.length > 1){
+        var dec = new String(sec[1]);
+        dec = String(parseFloat(sec[1])/Math.pow(10,(dec.length - decimals)));
+        dec = String(whole + Math.round(parseFloat(dec))/Math.pow(10,decimals));
+        var dot = dec.indexOf('.');
+        if(dot == -1){
+          dec += '.';
+          dot = dec.indexOf('.');
+        }
+        while(dec.length <= dot + decimals) { dec += '0'; }
+        result = dec;
+      } else{
+        var dot;
+        var dec = new String(whole);
+        dec += '.';
+        dot = dec.indexOf('.');
+        while(dec.length <= dot + decimals) { dec += '0'; }
+        result = dec;
+      }
+      return result;
+    }
+
+    function CloseStatement() {
+      Statement.Close();
+    }
+
+    function PrepareStatement(Sql) {
+      Statement = Connection.Prepare(Sql);
+    }
+
+    function ResetStatement() {
+      Statement.Reset();
+    }
+
+    function isDefined(type) {
+      return type != 'undefined' && type != 'unknown';
+    }
+
+    function getDOMElementById(id, doc) {
+      if (!isDefined(doc)) {
+        doc = document;
+      }
+      if (isDefined(typeof doc.getElementById)) {
+        return doc.getElementById(id);
+      } else
+      if (isDefined(typeof document.all)) {
+        return doc.all[id];
+      } else {
+        throw new Error("Can not find a method to locate DOM element.");
+        return null;
+      }
+    }
+
+    function getDateFromString(s) {
+      s = s.replace(/[\-|\.|_]/g, "/"); //2415020.89449074
+
+      return (new Date(Date.parse(s)));
+    }
+
+    function getDateFromEuropeanDateString(s) {
+        console.log('getDateFromEuropeanDateString >> input - ' + s);
+        var dd = s.slice(0, s.indexOf('/'));
+        var mm = s.slice(s.indexOf('/')+1, s.lastIndexOf('/'));
+        var yyyy = s.slice(s.lastIndexOf('/')+1);
+        var res  = mm+'/'+dd+'/'+yyyy;
+        console.log('getDateFromEuropeanDateString >> res - ' + res);
+        return (new Date(Date.parse(res)));
+    }
+
+    function CheckUndefTrim(varForCheck) {
+      if (typeof varForCheck == "undefined") {
+        varForCheck = "";
+      }
+      else {
+        varForCheck = varForCheck ? varForCheck.trim() : varForCheck;
+      }
+      return varForCheck;
+    }
+
+    function getPercent(percRaw) {
+      // 'S_100' -> 100
+      var perc;
+      if (percRaw == '') {
+        return ''
+      }
+      try {
+        perc = percRaw.substr(2) + '%';
+      }catch (e) {
+        perc = '';
+      }
+      return perc;
+    }
+
+    function prepareDate(s) {
+      var dt = new Date(s);
+      var dt = new Date(s);
+      var resStr = '';
+      if((new String(dt.getMonth()+1)).length < 2) {
+        resStr += "/0" + (dt.getMonth()+1);
+      } else {
+        resStr += "/" + (dt.getMonth()+1);
+      }
+      if((new String(dt.getDate())).length < 2) {
+        resStr += "0" + dt.getDate();
+      } else {
+        resStr += dt.getDate();
+      }
+
+      resStr += '/' + dt.getFullYear();
+      console.log('prepareDate = ' + resStr)
+      return resStr;
+    }
+
+    function getFormattedDate(s){
+        var dt = new Date(s);
+        var resStr = dt.getFullYear();
+        if((new String(dt.getMonth()+1)).length < 2) {
+            resStr += "-0" + (dt.getMonth()+1);
+        } else {
+            resStr += "-" + (dt.getMonth()+1);
+        }
+        if((new String(dt.getDate())).length < 2) {
+            resStr += "-0" + dt.getDate();
+        } else {
+            resStr += "-" + dt.getDate();
+        }
+        return resStr;
+    }
+
+    function getHeader(){
+      var result = "";
+      result += "<div style='padding-left: 10px; padding-right: 10px; padding-bottom: 10px; font-family: Open Sans'>";
+      result += "<font size=\"4\">Risultato della corrispondenza lineare</font>";
+
+      result += "</br>";
+      result += "<font size=\"2\" style='color: #9a9a9a'>" + inputStartDate + " - " + inputEndDate + "</font>" + "<br/>";
+      result += "</div>";
+
+      result += "<div style='padding-left: 10px; padding-right: 10px; padding-top: 10px; font-family: Open Sans'>";
+      return result
+    }
+
+    function getTable() {
+      var RowCount = Statement.RowCount;
+      result = ""
+      result += "<table class='pure-table pure-table-striped'>";
+      result += "<tr>";
+      result += "<th>Nom</th><th>L'adresse</th><th>Ciblage</th><th>Date</th><th>Catégorie</th><th>Risultato PDL, %</th><th>Taux MSL, %</th>";
+      result += "</tr>";
+      for (i = 0; i < RowCount; i++) {
+        Statement.Step();
+
+        var name = CheckUndefTrim(Statement.ColumnValue("NAME"));
+        var address = CheckUndefTrim(Statement.ColumnValue("ADDRESS"));
+        var targeting = CheckUndefTrim(Statement.ColumnValue("SUBTYPE"));
+        var dated = CheckUndefTrim(Statement.ColumnValue("VISIT_DATE"));
+        var sectionName = CheckUndefTrim(Statement.ColumnValue("SECTION_NAME"));
+        var pdlResult = getPercent(CheckUndefTrim(Statement.ColumnValue("PDL_RESULT")));
+        var mslRate = getPercent(CheckUndefTrim(Statement.ColumnValue("MSL_RATE")));
+
+        result += "<tr><td>" + name + "</td>";
+        result += "<td>" + address + "</td>";
+        result += "<td>" + targeting + "</td>";
+        result += "<td>" + dated + "</td>";
+        result += "<td>" + sectionName + "</td>";
+        result += "<td class = 'right-align'>" + pdlResult + "</td>";
+        result += "<td class = 'right-align'>" + mslRate + "</td></tr>";
+      }
+      result += "</table>";
+      return result;
+    }
+
+    function DateValidate() {
+        if (isAndroid) {
+            inputStartDate = getDOMElementById("startDateTimePicker", document).value;
+            inputEndDate = getDOMElementById("endDateTimePicker", document).value;
+        } else {
+            console.log('not android');
+            inputStartDate = prepareDate(getDateFromEuropeanDateString(getDOMElementById("startDateTimePicker", document).value));
+            console.log('android >> inputStartDate' + inputStartDate);
+            inputEndDate = prepareDate(getDateFromEuropeanDateString(getDOMElementById("endDateTimePicker", document).value));
+        }
+
+        var iStartDate = getDateFromEuropeanDateString(inputStartDate);
+        var iEndDate = getDateFromEuropeanDateString(inputEndDate);
+        if (iEndDate < iStartDate) {
+            getDOMElementById("error", document).style.display = "block";
+
+        } else {
+            getDOMElementById("error", document).style.display = "none";
+            Show()
+        }
+    }
+
+    function Show() {
+      var HTML = "";
+      HTML += getHeader();
+      // First table section
+      sql = sql.replace('[inputStartDate]', getFormattedDate(getDateFromEuropeanDateString(inputStartDate)))
+        .replace('[inputEndDate]', getFormattedDate(getDateFromEuropeanDateString(inputEndDate)))
+        .replace('[itemPDLDisplayValue]', itemPDLDisplayValue)
+        .replace('[itemMCLDisplayValue]', itemMCLDisplayValue);
+
+      //  [inputStartDate]
+      //  [inputEndDate]
+      //  [itemPDLDisplayValue]
+      //  [itemMCLDisplayValue]
+
+      PrepareStatement(sql);
+      HTML += getTable();
+      CloseStatement();
+      // End of First table section
+
+      // End of Footer
+
+      var div = document.getElementById('content');
+      div.innerHTML = HTML;
+    }
+
+
+    function createFirstScreen() {
+      var HTML = "";
+      console.log(navigator);
+      console.log(navigator.appVersion);
+      if(navigator.appVersion.indexOf("Android")!=-1) {
+        console.log('Android');
+        isAndroid = true;
+        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"col s12 m6\">";
+        HTML += "<label for=\"startDateTimePicker\" class=\"\">Data d'inizio :</label>"
+        HTML += "<input type=\"text\" class=\"datepicker\" id=\"startDateTimePicker\">"
+        HTML += "</div>";
+        HTML += "</div>";
+
+        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"col s12 m6\">";
+        HTML += "<label for=\"endDateTimePicker\" class=\"\">Data della fine:</label>"
+        HTML += "<input type=\"text\" class=\"datepicker\" id=\"endDateTimePicker\">"
+        HTML += "</div>";
+        HTML += "</div>";
+
+          HTML += "<div class = \"error\" style=\"display: none;\" id=\"error\"> Data della fine non puo' iniziarsi prima della data d'inizio </div>";
+
+        HTML += "<div class=\"center\"><a onClick=\"DateValidate()\" class=\"waves-effect waves-sw-accent btn-flat\"><b><font color=\"#18bac5\">Generare</font></b></a></div>";
+      } else {
+        console.log('Not Android');
+        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"col s12 m6\">";
+        HTML += "<label for=\"startDateTimePicker\" class=\"\"> Data d'inizio:</label>"
+        HTML += "<input type=\"date\" class=\"datepicker\" id=\"startDateTimePicker\">"
+        HTML += "</div>";
+        HTML += "</div>";
+
+        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"col s12 m6\">";
+        HTML += "<label for=\"endDateTimePicker\" class=\"\">Data della fine:</label>"
+        HTML += "<input type=\"date\" class=\"datepicker\" id=\"endDateTimePicker\">"
+        HTML += "</div>";
+        HTML += "</div>";
+        HTML += "<div class = \"error\" style=\"display: none;\" id=\"error\"> Data della fine non puo' iniziarsi prima della data d'inizio </div>";
+
+        HTML += "<br/>";
+
+        HTML += "<div class=\"center\"><a onClick=\"DateValidate()\" class=\"waves-effect waves-sw-accent btn-flat\"><b><font color=\"#18bac5\">Generare</font></b></a></div>";
+      }
+
+      var div = document.getElementById('content');
+      div.innerHTML = HTML;
+
+      getDOMElementById("startDateTimePicker", document).value = prepareDate(currDate);
+      getDOMElementById("endDateTimePicker", document).value = prepareDate(currDate);
+    }
+
+  </script>
+
+</head>
+<body id="myBody" onLoad="createFirstScreen()">
+<style>
+  .pure-table {
+    border-collapse: collapse;
+    border-spacing: 0;
+    empty-cells: show;
+    border: none;
+    width: 100%
+  }
+  .pure-table caption {
+    color: #000;
+    font: italic 85%/1 arial, sans-serif;
+    padding: 1em 0;
+    text-align: left;
+  }
+  .pure-table td,
+  .pure-table th {
+    border-width: 0 0 0 0;
+    font-size: inherit;
+    margin: 0;
+    background-color: white;
+    overflow: visible;
+    padding: 0.5em 0.3em;
+    font-family: "Open Sans";
+    border-bottom: 1px solid #f2f2f2;
+    color: #3c3c3c;
+  }
+  .pure-table td:first-child,
+  .pure-table th:first-child {
+    border-left-width: 0;
+  }
+  .pure-table thead {
+    background-color: #e0e0e0;
+    color: #000;
+    text-align: left;
+    vertical-align: bottom;
+  }
+  .pure-table td {
+    background-color: transparent;
+    border-bottom: none;
+  }
+  .pure-table-odd td {
+    background-color: #f2f2f2;
+  }
+  .pure-table-striped tr:nth-child(2n-1) td {
+    background-color: #f2f2f2;
+  }
+  .pure-table-striped tr:last-child td {
+      border-bottom: 1px solid #f2f2f2;
+    /*background-color: rgb(219,217,217);*/
+  }
+  .pure-table-bordered td {
+    border-bottom: 1px solid #cbcbcb;
+  }
+  .pure-table-bordered tbody > tr:last-child > td {
+    /*border-bottom-width: 0;*/
+
+  }
+  .pure-table-horizontal td,
+  .pure-table-horizontal th {
+    border-width: 0 0 1px 0;
+    border-bottom: 1px solid #cbcbcb;
+  }
+  .pure-table-horizontal tbody > tr:last-child > td {
+    /*border-bottom-width: 0;*/
+  }
+
+  .last-table-striped tr:last-child td {
+    /*background-color: white;*/
+  }
+
+  .last-table-striped tr:nth-child(2n-1) td {
+    background-color: #f2f2f2;
+  }
+
+   .error{
+       color: red;
+       font-size: 10px;
+       margin: -20px 10px 0 10px;
+   }
+   
+   .row {
+   		height: 50px;
+   }
+
+
+</style>
+<div id="content" style="padding-top: 10px; padding-bottom: 10px"></div>
+<script type="text/javascript" src="../jquery-3.2.1.min.js"></script>
+<script type="text/javascript" src="../materialize.js"></script>
+<script>
+    var userLang = navigator.userAgent;
+    $(document).ready(function () {
+        // var minDate = new Date('2000-01-01');
+        // var maxDate = new Date();
+        $('select').material_select();
+        var pickerStart = {
+            selectMonths: true, // Creates a dropdown to control month
+            selectYears: 15, // Creates a dropdown of 15 years to control year,
+            monthsFull: getMonthsFull(userLang),
+            monthsShort: getMonthsShort(userLang),
+            weekdaysFull: getWeekDaysFull(userLang),
+            weekdaysShort: getWeekDaysShort(userLang),
+            weekdaysLetter: getWeekDaysLetter(userLang),
+            close: getDoneBtn(userLang),
+            format: 'dd/mm/yyyy',
+            // max: maxDate,
+            // min: minDate,
+
+            closeOnSelect: false, // Close upon selecting a date,
+  /*          onSet: function (ele) {
+                if (ele.select) {
+                    this.close();
+                }
+                var d1 = $('#startDateTimePicker').val();
+                var d2 = $('#endDateTimePicker').val();
+
+                var date1 = new Date(d1);
+                var date2 = new Date(d2);
+
+                var date1_ms = date1.getTime();
+                var date2_ms = date2.getTime();
+                if ((date2_ms - date1_ms) < 0) {
+                    // alert('End date cannot be a previous date!');
+                    $('#startdate').val(d2);
+                    getDOMElementById("error", document).style.display = "block";
+
+                } else {
+                    getDOMElementById("error", document).style.display = "none";
+                }
+                picker2.set('min', date1);
+            }*/
+        };
+        var pickerEnd = {
+            selectMonths: true, // Creates a dropdown to control month
+            selectYears: 15, // Creates a dropdown of 15 years to control year,
+            monthsFull: getMonthsFull(userLang),
+            monthsShort: getMonthsShort(userLang),
+            weekdaysFull: getWeekDaysFull(userLang),
+            weekdaysShort: getWeekDaysShort(userLang),
+            weekdaysLetter: getWeekDaysLetter(userLang),
+            close: getDoneBtn(userLang),
+            format: 'dd/mm/yyyy',
+
+            // min: minDate,
+            // max: maxDate,
+            closeOnSelect: false, // Close upon selecting a date,
+ /*           onSet: function (ele) {
+                if (ele.select) {
+                    this.close();
+                }
+                var d1 = $('#startDateTimePicker').val();
+                var d2 = $('#endDateTimePicker').val();
+
+                var date1 = new Date(d1);
+                var date2 = new Date(d2);
+
+                var date1_ms = date1.getTime();
+                var date2_ms = date2.getTime();
+                if ((date2_ms - date1_ms) < 0) {
+                    // alert('End date cannot be a previous date!');
+                    $('#startdate').val(d2);
+                    getDOMElementById("error", document).style.display = "block";
+
+                } else {
+                    getDOMElementById("error", document).style.display = "none";
+                }
+                picker1.set('max', date2);
+            }*/
+        }
+        p1 = $('#startDateTimePicker').pickadate(pickerStart);
+        // var picker1 = p1.pickadate('picker')
+        p2 = $('#endDateTimePicker').pickadate(pickerEnd);
+        // var picker2 = p2.pickadate('picker')
+    });
+</script>
 </body>
 </html>
