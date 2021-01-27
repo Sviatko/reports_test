@@ -8,7 +8,6 @@
   <script type="text/javascript" src="DatePickerLocale.js"></script>
   <script language="JavaScript">
     var Statement = null;
-    var currDate = new Date();
     var inputStartDate;
     var inputEndDate;
     var startDateMs;
@@ -129,22 +128,6 @@
       }
     }
 
-    function getDateFromString(s) {
-      s = s.replace(/[\-|\.|_]/g, "/"); //2415020.89449074
-
-      return (new Date(Date.parse(s)));
-    }
-
-    function getDateFromEuropeanDateString(s) {
-        console.log('getDateFromEuropeanDateString >> input - ' + s);
-        var dd = s.slice(0, s.indexOf('/'));
-        var mm = s.slice(s.indexOf('/')+1, s.lastIndexOf('/'));
-        var yyyy = s.slice(s.lastIndexOf('/')+1);
-        var res  = mm+'/'+dd+'/'+yyyy;
-        console.log('getDateFromEuropeanDateString >> res - ' + res);
-        return (new Date(Date.parse(res)));
-    }
-
     function CheckUndefTrim(varForCheck) {
       if (typeof varForCheck == "undefined") {
         varForCheck = "";
@@ -169,27 +152,9 @@
       return perc;
     }
 
-    function prepareDate(s) {
-      var dt = new Date(s);
-      var dt = new Date(s);
-      var resStr = '';
-      if((new String(dt.getMonth()+1)).length < 2) {
-        resStr += "/0" + (dt.getMonth()+1);
-      } else {
-        resStr += "/" + (dt.getMonth()+1);
-      }
-      if((new String(dt.getDate())).length < 2) {
-        resStr += "0" + dt.getDate();
-      } else {
-        resStr += dt.getDate();
-      }
-
-      resStr += '/' + dt.getFullYear();
-      console.log('prepareDate = ' + resStr)
-      return resStr;
-    }
-
     function getFormattedDate(s){
+      // yyyy-mm-dd
+        console.log('getFormattedDate input - ',s)
         var dt = new Date(s);
         var resStr = dt.getFullYear();
         if((new String(dt.getMonth()+1)).length < 2) {
@@ -202,7 +167,31 @@
         } else {
             resStr += "-" + dt.getDate();
         }
+        console.log('getFormattedDate result - ', resStr)
         return resStr;
+    }
+    function getDateInOutputFormat (s) {
+      // dd-mm-yyyy
+      console.log('getDateInOutputFormat input - ',s)
+      var dt = new Date(s);
+      var resStr = "";
+
+      if((new String(dt.getDate())).length < 2) {
+        resStr += "0" + dt.getDate();
+      } else {
+        resStr += "" + dt.getDate();
+      }
+      resStr += "-"
+      if((new String(dt.getMonth()+1)).length < 2) {
+        resStr += "0" + (dt.getMonth()+1);
+      } else {
+        resStr += "" + (dt.getMonth()+1);
+      }
+      resStr += "-"
+      resStr += dt.getFullYear();
+
+      console.log('getDateInOutputFormat result - ', resStr)
+      return resStr;
     }
 
     function getHeader(){
@@ -211,12 +200,14 @@
       result += "<font size=\"4\">Risultato della corrispondenza lineare</font>";
 
       result += "</br>";
-      result += "<font size=\"2\" style='color: #9a9a9a'>" + inputStartDate + " - " + inputEndDate + "</font>" + "<br/>";
+      result += "<font size=\"2\" style='color: #9a9a9a'>" + getDateInOutputFormat(inputStartDate) + " - " + getDateInOutputFormat(inputEndDate) + "</font>" + "<br/>";
       result += "</div>";
 
       result += "<div style='padding-left: 10px; padding-right: 10px; padding-top: 10px; font-family: Open Sans'>";
       return result
     }
+
+
 
     function getTable() {
       var RowCount = Statement.RowCount;
@@ -249,19 +240,12 @@
     }
 
     function DateValidate() {
-        if (isAndroid) {
-            inputStartDate = getDOMElementById("startDateTimePicker", document).value;
-            inputEndDate = getDOMElementById("endDateTimePicker", document).value;
-        } else {
-            console.log('not android');
-            inputStartDate = prepareDate(getDateFromEuropeanDateString(getDOMElementById("startDateTimePicker", document).value));
-            console.log('android >> inputStartDate' + inputStartDate);
-            inputEndDate = prepareDate(getDateFromEuropeanDateString(getDOMElementById("endDateTimePicker", document).value));
-        }
+        inputStartDate = getDOMElementById("startDateTimePicker", document).value;
+        inputEndDate = getDOMElementById("endDateTimePicker", document).value;
+        console.log('DateValidate >> inputStartDate - ' + inputStartDate);
+        console.log('DateValidate >> inputStartDate - ' + inputEndDate);
 
-        var iStartDate = getDateFromEuropeanDateString(inputStartDate);
-        var iEndDate = getDateFromEuropeanDateString(inputEndDate);
-        if (iEndDate < iStartDate) {
+      if (inputEndDate < inputStartDate) {
             getDOMElementById("error", document).style.display = "block";
 
         } else {
@@ -274,8 +258,8 @@
       var HTML = "";
       HTML += getHeader();
       // First table section
-      sql = sql.replace('[inputStartDate]', getFormattedDate(getDateFromEuropeanDateString(inputStartDate)))
-        .replace('[inputEndDate]', getFormattedDate(getDateFromEuropeanDateString(inputEndDate)))
+      sql = sql.replace('[inputStartDate]', inputStartDate)
+        .replace('[inputEndDate]', inputEndDate)
         .replace('[itemPDLDisplayValue]', itemPDLDisplayValue)
         .replace('[itemMCLDisplayValue]', itemMCLDisplayValue);
 
@@ -303,33 +287,32 @@
       if(navigator.appVersion.indexOf("Android")!=-1) {
         console.log('Android');
         isAndroid = true;
-        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"row input-row\">";
         HTML += "<div class=\"col s12 m6\">";
         HTML += "<label for=\"startDateTimePicker\" class=\"\">Data d'inizio :</label>"
-        HTML += "<input type=\"text\" class=\"datepicker\" id=\"startDateTimePicker\">"
+        HTML += "<input type=\"date\" class=\"datepicker\" id=\"startDateTimePicker\">"
         HTML += "</div>";
         HTML += "</div>";
 
-        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"row input-row\">";
         HTML += "<div class=\"col s12 m6\">";
         HTML += "<label for=\"endDateTimePicker\" class=\"\">Data della fine:</label>"
-        HTML += "<input type=\"text\" class=\"datepicker\" id=\"endDateTimePicker\">"
+        HTML += "<input type=\"date\" class=\"datepicker\" id=\"endDateTimePicker\">"
         HTML += "</div>";
         HTML += "</div>";
+        HTML += "<div class = \"error\" style=\"display: none;\" id=\"error\"> Data della fine non puo' iniziarsi prima della data d'inizio </div>";
 
-          HTML += "<div class = \"error\" style=\"display: none;\" id=\"error\"> Data della fine non puo' iniziarsi prima della data d'inizio </div>";
-
-        HTML += "<div class=\"center\"><a onClick=\"DateValidate()\" class=\"waves-effect waves-sw-accent btn-flat\"><b><font color=\"#18bac5\">Generare</font></b></a></div>";
+        HTML += "<div class=\"center generate\"><a onClick=\"DateValidate()\" class=\"waves-effect waves-sw-accent btn-flat\"><b><font color=\"#18bac5\">Generare</font></b></a></div>";
       } else {
         console.log('Not Android');
-        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"row input-row\">";
         HTML += "<div class=\"col s12 m6\">";
         HTML += "<label for=\"startDateTimePicker\" class=\"\"> Data d'inizio:</label>"
         HTML += "<input type=\"date\" class=\"datepicker\" id=\"startDateTimePicker\">"
         HTML += "</div>";
         HTML += "</div>";
 
-        HTML += "<div class=\"row\">";
+        HTML += "<div class=\"row input-row\">";
         HTML += "<div class=\"col s12 m6\">";
         HTML += "<label for=\"endDateTimePicker\" class=\"\">Data della fine:</label>"
         HTML += "<input type=\"date\" class=\"datepicker\" id=\"endDateTimePicker\">"
@@ -339,14 +322,14 @@
 
         HTML += "<br/>";
 
-        HTML += "<div class=\"center\"><a onClick=\"DateValidate()\" class=\"waves-effect waves-sw-accent btn-flat\"><b><font color=\"#18bac5\">Generare</font></b></a></div>";
+        HTML += "<div class=\"center generate\"><a onClick=\"DateValidate()\" class=\"waves-effect waves-sw-accent btn-flat\"><b><font color=\"#18bac5\">Generare</font></b></a></div>";
       }
 
       var div = document.getElementById('content');
       div.innerHTML = HTML;
-
-      getDOMElementById("startDateTimePicker", document).value = prepareDate(currDate);
-      getDOMElementById("endDateTimePicker", document).value = prepareDate(currDate);
+      var currDate = new Date().toISOString().substr(0, 10);
+      getDOMElementById("startDateTimePicker", document).value = currDate;
+      getDOMElementById("endDateTimePicker", document).value = currDate;
     }
 
   </script>
@@ -433,100 +416,18 @@
        margin: -20px 10px 0 10px;
    }
    
-   .row {
+   .input-row {
    		height: 50px;
+   }
+   .generate{
+     margin-top: 10px;
    }
 
 
 </style>
 <div id="content" style="padding-top: 10px; padding-bottom: 10px"></div>
-<script type="text/javascript" src="../jquery-3.2.1.min.js"></script>
-<script type="text/javascript" src="../materialize.js"></script>
-<script>
-    var userLang = navigator.userAgent;
-    $(document).ready(function () {
-        // var minDate = new Date('2000-01-01');
-        // var maxDate = new Date();
-        $('select').material_select();
-        var pickerStart = {
-            selectMonths: true, // Creates a dropdown to control month
-            selectYears: 15, // Creates a dropdown of 15 years to control year,
-            monthsFull: getMonthsFull(userLang),
-            monthsShort: getMonthsShort(userLang),
-            weekdaysFull: getWeekDaysFull(userLang),
-            weekdaysShort: getWeekDaysShort(userLang),
-            weekdaysLetter: getWeekDaysLetter(userLang),
-            close: getDoneBtn(userLang),
-            format: 'dd/mm/yyyy',
-            // max: maxDate,
-            // min: minDate,
+<script type="text/javascript" src="jquery-3.2.1.min.js"></script>
+<script type="text/javascript" src="materialize.js"></script>
 
-            closeOnSelect: false, // Close upon selecting a date,
-  /*          onSet: function (ele) {
-                if (ele.select) {
-                    this.close();
-                }
-                var d1 = $('#startDateTimePicker').val();
-                var d2 = $('#endDateTimePicker').val();
-
-                var date1 = new Date(d1);
-                var date2 = new Date(d2);
-
-                var date1_ms = date1.getTime();
-                var date2_ms = date2.getTime();
-                if ((date2_ms - date1_ms) < 0) {
-                    // alert('End date cannot be a previous date!');
-                    $('#startdate').val(d2);
-                    getDOMElementById("error", document).style.display = "block";
-
-                } else {
-                    getDOMElementById("error", document).style.display = "none";
-                }
-                picker2.set('min', date1);
-            }*/
-        };
-        var pickerEnd = {
-            selectMonths: true, // Creates a dropdown to control month
-            selectYears: 15, // Creates a dropdown of 15 years to control year,
-            monthsFull: getMonthsFull(userLang),
-            monthsShort: getMonthsShort(userLang),
-            weekdaysFull: getWeekDaysFull(userLang),
-            weekdaysShort: getWeekDaysShort(userLang),
-            weekdaysLetter: getWeekDaysLetter(userLang),
-            close: getDoneBtn(userLang),
-            format: 'dd/mm/yyyy',
-
-            // min: minDate,
-            // max: maxDate,
-            closeOnSelect: false, // Close upon selecting a date,
- /*           onSet: function (ele) {
-                if (ele.select) {
-                    this.close();
-                }
-                var d1 = $('#startDateTimePicker').val();
-                var d2 = $('#endDateTimePicker').val();
-
-                var date1 = new Date(d1);
-                var date2 = new Date(d2);
-
-                var date1_ms = date1.getTime();
-                var date2_ms = date2.getTime();
-                if ((date2_ms - date1_ms) < 0) {
-                    // alert('End date cannot be a previous date!');
-                    $('#startdate').val(d2);
-                    getDOMElementById("error", document).style.display = "block";
-
-                } else {
-                    getDOMElementById("error", document).style.display = "none";
-                }
-                picker1.set('max', date2);
-            }*/
-        }
-        p1 = $('#startDateTimePicker').pickadate(pickerStart);
-        // var picker1 = p1.pickadate('picker')
-        p2 = $('#endDateTimePicker').pickadate(pickerEnd);
-        // var picker2 = p2.pickadate('picker')
-    });
-</script>
 </body>
 </html>
