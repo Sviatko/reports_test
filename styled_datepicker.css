@@ -1,0 +1,8 @@
+.picker { outline: none; }
+.picker__weekday-display { background-color: rgb(234,105,84);
+    font-weight: 600;}
+.picker__date-display { background-color: rgb(234,105,84); }
+.picker__day.picker__day--infocus.picker__day--selected.picker__day--highlighted { background-color: rgb(253,219,209); }
+.picker__day.picker__day--infocus.picker__day--today.picker__day--selected.picker__day--highlighted { background-color: rgb(253,219,209); }
+.picker__day.picker__day--today {color: rgb(234,105,84);
+  font-weight: 700;}
